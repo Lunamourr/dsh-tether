@@ -175,7 +175,11 @@ function apply(ctx, config = {}) {
   // sidecar 的人读日志与这里打在同一个终端上,语言跟着走,免得一半中文一半英文
   const args = ['host', '--proxy-target', proxyTarget, '--lang', terminalZh ? 'zh' : 'en']
   if (config.pair) args.push('--pair')
-  const child = spawn(binary, args, { stdio: ['pipe', 'pipe', 'inherit'] })
+  // windowsHide:dsh desktop 的插件宿主是 ELECTRON_RUN_AS_NODE 跑的 Electron,GUI 子系统、自己没有
+  // console,于是 Windows 给这个 console 子系统的 sidecar 分配一个新 console 并把窗口显示出来。该
+  // 选项让 libuv 传 SW_HIDE,新分配的窗口不显示;stderr 的 inherit 不受影响,在终端里跑 dsh 时
+  // sidecar 的日志照旧打在同一个终端
+  const child = spawn(binary, args, { stdio: ['pipe', 'pipe', 'inherit'], windowsHide: true })
   ctx.effect(() => () => { child.kill() })
   /** sidecar 不在了的原因;undefined = 活着。等它回话的路由用来立即报错 */
   let sidecarGone

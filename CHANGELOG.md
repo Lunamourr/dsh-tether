@@ -2,6 +2,16 @@
 
 本文件记录面向用户的变化。每个版本的这一节会原样作为该版本 Release 的说明。
 
+## 0.1.21
+
+### 修复
+
+- **在 dsh desktop 里启动时会弹出一个控制台窗口**([#15](https://github.com/zexadev/dsh-tether/issues/15))。插件拉起 sidecar 时没让 Windows 隐藏新窗口。dsh desktop 的插件宿主是以 Node 模式运行的 Electron,属 GUI 程序、自己没有控制台,Windows 于是给 sidecar(控制台程序)新分配一个控制台,连窗口一起显示出来。在终端里跑 dsh 不会这样:宿主已有控制台,子进程直接继承,所以这个窗口只在 desktop 下出现。现在新分配的窗口不再显示;终端里跑 dsh 时 sidecar 的日志照旧打在同一个终端。
+
+### English
+
+Starting the plugin inside dsh desktop popped up a console window ([#15](https://github.com/zexadev/dsh-tether/issues/15)). The plugin spawned its sidecar without asking Windows to hide the new window. The plugin host of dsh desktop is Electron running in Node mode — a GUI program that owns no console — so Windows allocated a fresh console for the sidecar, which is a console program, and showed its window along with it. Running dsh in a terminal never did this, because the host already owns a console and the child simply inherits it, which is why the window only ever appeared under desktop. The newly allocated window is now hidden, and sidecar logs still go to the same terminal when you run dsh there.
+
 ## 0.1.20
 
 ### 修复

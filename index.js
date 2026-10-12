@@ -169,8 +169,22 @@ function apply(ctx, config = {}) {
       )}`,
     )
   }
-  // webServer.port 是真实监听端口(config 写 0 时为 OS 分配值),手机由此拿到完整界面
-  const proxyTarget = `${ctx.webServer.host}:${ctx.webServer.port}`
+  // dsh 0.2.1-alpha.2 起 webServer 能开 TLS。隧道里转的是明文 HTTP(代理流还要改写请求头),
+  // 对着 HTTPS 监听器只会让手机白屏,所以这里直接拒,不留给用户去猜。protocol 是那一版才有的,
+  // 旧版本读不到就按 http 算
+  if ((ctx.webServer.protocol ?? 'http:') !== 'http:') {
+    throw new Error(
+      `[tether] ${tt(
+        'dsh web 开了 TLS(https),而手机走的代理流只能转明文 HTTP,连上只会白屏。去掉 webServer 的 tls 配置再用手机连接。',
+        'dsh web is serving HTTPS, but the proxy stream the phone uses can only carry plain HTTP — the phone would get a blank page. Remove the tls config from webServer before connecting the phone.',
+      )}`,
+    )
+  }
+  // webServer.port 是真实监听端口(config 写 0 时为 OS 分配值),手机由此拿到完整界面。
+  // host 从 0.2.1-alpha.2 起可以是任意字面地址:IPv6 的要带方括号,否则 sidecar 那边按
+  // SocketAddr 解析 --proxy-target 直接失败(`::1:3000` 不是合法写法)
+  const host = ctx.webServer.host.includes(':') ? `[${ctx.webServer.host}]` : ctx.webServer.host
+  const proxyTarget = `${host}:${ctx.webServer.port}`
 
   // sidecar 的人读日志与这里打在同一个终端上,语言跟着走,免得一半中文一半英文
   const args = ['host', '--proxy-target', proxyTarget, '--lang', terminalZh ? 'zh' : 'en']

@@ -10,10 +10,11 @@
 // 创建的目录都在沙箱内,它们的父目录也在沙箱内、照旧被 fsync;再往上全是系统目录,本进程
 // 从未改动过它们的目录项,没有需要落盘的东西。
 //
-// 注意判据是「本进程不可能在里面创建过条目」,不是「打不开」:只读 open 要 r 位,创建目录项
-// 要 w+x 位,两者独立 —— `0333` 这类可写不可读的目录里真有本进程写的条目,跳过就是悄悄丢
-// durability。这里成立是因为 `/data/user/0` 及其以上对 App 落在 other 位上只有 x、没有 w,
-// 本进程写不进去。
+// 判据是「本进程不可能在里面创建过条目」,不是「打不开」:只读 open 要 r 位,创建目录项要
+// w+x 位,两者独立 —— `0333` 这类可写不可读的目录里真可能有本进程创建的条目,只凭打不开就
+// 跳过是悄悄丢 durability。所以 helper 在 EACCES/EPERM 之后还要 `access(W_OK)` 同样失败才
+// 跳过,目录可写就照原样抛。`/data/user/0` 及其以上对 App 落在 other 位上只有 x、没有 w,
+// 照旧跳过。
 //
 // 2026-10-09 在 Redmi 23113RKC6C(Android 16)上实测:file input 与粘贴两条附件路径都是
 // 这个错。同一台机器上会话 jsonl 落盘一直是好的 —— session-persistence 只 fsync 自己那
@@ -44,22 +45,32 @@ export const SITES = [
   },
 ]
 
-// 注入到模块开头。用模块自己 import 进来的 open(函数声明会提升,调用时它已绑定),
-// 这样不必再注入 node:fs/promises —— 同一个文件上 android-link-fallback 已经注入过一份。
+// 注入到模块开头。open 与 constants 用模块自己 import 进来的那两个(函数声明会提升,调用时
+// 已绑定);access 上游没 import,单独注一条,名字带前缀免得与模块自己的绑定重名。逐字匹配的
+// FIND 里有 constants.O_RDONLY,所以「constants 还在」这件事由匹配本身保证。
 // 写法照上游文件(tab、分号、双引号)
 const PRELUDE = `/** dsh-tether: an app cannot open directories outside its sandbox; see scripts/android-dirsync-fallback.mjs */
+import { access as __tetherAccess } from "node:fs/promises";
 async function ${HELPER}(path, flags) {
 	let handle;
 	try {
 		handle = await open(path, flags);
 	} catch (error) {
-		if (["EACCES", "EPERM"].includes(error?.code)) return;
+		if (["EACCES", "EPERM"].includes(error?.code) && !await __tetherCanWrite(path)) return;
 		throw error;
 	}
 	try {
 		await handle.sync();
 	} finally {
 		await handle.close();
+	}
+}
+async function __tetherCanWrite(path) {
+	try {
+		await __tetherAccess(path, constants.W_OK);
+		return true;
+	} catch {
+		return false;
 	}
 }
 `

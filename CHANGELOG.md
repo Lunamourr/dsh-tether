@@ -2,6 +2,27 @@
 
 本文件记录面向用户的变化。每个版本的这一节会原样作为该版本 Release 的说明。
 
+## 0.1.22
+
+### 修复
+
+- **dsh 0.2.1-rc 上侧栏里的「连接手机」按钮不见了;dsh desktop 上它从来没出现过**([#16](https://github.com/zexadev/dsh-tether/pull/16))。这个按钮是照抄侧栏「设置」入口的样式挂上去的,抄不到就干脆不挂。dsh 0.2.1-rc 把设置入口从侧栏挪走了,浏览器界面上的按钮于是跟着消失;dsh desktop 的设置本来就在应用自己的菜单里,侧栏从来没有可抄的对象,所以那边一次都没出现过。首次配对不受影响(白名单为空时会自动弹出配对码),但换手机、加第二台设备只能靠这个按钮,没有它就只能手工删配对记录。现在抄不到「设置」就改抄侧栏底部那一行(登录后是账号行,没登录是「更多」),两处都抄不到也照样把按钮挂出来。顺带一提,注入界面走的通道也换了:dsh desktop 的界面来自应用自带的前端产物,老通道根本到不了它。
+- **(手机本地模式)目录 fsync 的跳过条件收严**。0.1.20 为了绕开沙箱限制,改成「打不开的目录就跳过 fsync」;但「打不开」和「写不进去」是两回事,一个可写不可读的目录里真可能有本进程刚创建的条目,跳过就等于悄悄少落一次盘。现在要「打不开、而且也确实写不进去」才跳过。手机上那条路径(`/data/user/0` 及其以上对 App 只有执行权限)行为不变。
+
+### 变更
+
+- **手机本地模式内置的 dsh 从 `0.2.0-rc.2` 升到 `0.2.1-rc.2`**。装上这一版后,第一次启动本地模式会重新解压运行时。真机逐条验过:解压、选工作区、发一条消息、发一张图。arm64 包因内置运行时变大,从约 78 MB 涨到约 83 MB;其余 ABI 不含运行时,体积不变。
+- **已验证的 dsh 版本补上 `0.2.1-rc.2`**。声明的兼容范围本来就覆盖 0.2.1 这一族,不用改,装不装得上没有变化。
+
+### English
+
+The Connect a phone button disappeared from the sidebar on dsh 0.2.1-rc, and never appeared at all in dsh desktop ([#16](https://github.com/zexadev/dsh-tether/pull/16)). The button is mounted by copying the style of the sidebar Settings entry, and it simply did not mount when there was nothing to copy. dsh 0.2.1-rc moved that entry out of the sidebar, so the button vanished in the browser interface; dsh desktop keeps its settings in the application menu, so the sidebar there never had anything to copy and the button never showed up at all. First pairing was unaffected — a pairing code appears by itself while no device is paired — but switching phones or adding a second device needs this button, and without it the only way out was deleting the pairing record by hand. The button now falls back to copying the row at the bottom of the sidebar (the account row when signed in, the More row when not), and it mounts with its own styling when neither reference exists. The channel the interface is injected through changed as well: the dsh desktop interface comes from the frontend bundled into the application, which the old channel could never reach.
+
+In local mode on the phone, the condition for skipping a directory fsync is now stricter. To work around the sandbox, 0.1.20 skipped fsync for any directory the app could not open; but "cannot open" and "cannot write" are different things, and a directory that is writable but not readable may genuinely hold entries this process just created, so skipping it quietly loses a durability step. The fallback now skips only when the directory can neither be opened nor written. Behaviour on the phone is unchanged, since `/data/user/0` and everything above it grants an ordinary app execute only.
+
+The dsh bundled into Android local mode moves from `0.2.0-rc.2` to `0.2.1-rc.2`. The first local-mode start after this update unpacks the runtime again. Verified on a real device end to end — unpacking, choosing a workspace, sending a message, and sending an image. The `arm64` APK grows from about 78 MB to about 83 MB because of the larger bundled runtime; the other ABIs carry no runtime and are unchanged.
+
+The list of verified dsh versions gains `0.2.1-rc.2`. The declared compatibility range already covered the 0.2.1 family, so nothing changes about whether the plugin installs.
 ## 0.1.21
 
 ### 修复

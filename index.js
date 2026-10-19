@@ -113,7 +113,7 @@ function refuse(res) {
 
 /** 与 sidecar 无关的部分:窄屏适配注入,以及手机上看配置文件的路由 */
 function applyUi(ctx) {
-  ctx.effect(() => ctx.webServer.tapIndex(injectNarrowScreenCss))
+  mountTetherUi(ctx)
 
   // 「打开配置文件」在宿主机桌面开编辑器,手机上按了毫无反应。这条路由把同一份
   // 文件的内容原样交给手机自己渲染。路径由 Host 侧的 settings.documentPath 决定,
@@ -396,6 +396,32 @@ function apply(ctx, config = {}) {
       send({ type: 'approval-cancel', id: req.callId })
     }
   })
+}
+
+/**
+ * 注入有两条通道,按宿主 webserver 的能力二选一:
+ *
+ * - 结构化的 `webserver/index-inject` 表(dsh 0.2.x 起):行是纯数据,一张表喂两个
+ *   渲染器。浏览器那边由宿主渲进 index.html 文本;**dsh desktop** 的 index.html 是
+ *   应用自带的前端产物,走 file:// 加 IPC,根本不经过宿主 renderIndex,只会把这张表
+ *   经 boot 通道(ready.injections)交给渲染器逐行建元素。桌面端要看到这部分界面,
+ *   只能走这条。
+ * - `tapIndex` 字符串变换(老宿主):只作用于宿主渲染的 index.html,桌面端永远看不到。
+ *
+ * 判据是能力(collectIndexInjections 在不在)而不是版本号。两条只走一条:同一份文本
+ * 注两遍没有意义,样式和监听器都会多一份。
+ */
+function mountTetherUi(ctx) {
+  if (typeof ctx.webServer.collectIndexInjections === 'function') {
+    ctx.effect(() =>
+      ctx.on('webserver/index-inject', (table) => {
+        table.push({ kind: 'style', text: tetherCss })
+        table.push({ kind: 'script', placement: 'head', text: tetherScript })
+      }),
+    )
+    return
+  }
+  ctx.effect(() => ctx.webServer.tapIndex(injectNarrowScreenCss))
 }
 
 /**

@@ -26,7 +26,7 @@ import { patchRequireBuiltin } from './android-require-builtin-fallback.mjs'
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))
 const pin = pkg.dsh?.androidRuntime
-if (!pin?.node || !pin?.dsh) throw new Error('package.json 缺 dsh.androidRuntime.{node,dsh}')
+if (!pin?.node || !pin?.dsh || !pin?.koffi || !pin?.zod) throw new Error('package.json 缺 dsh.androidRuntime.{node,dsh,koffi,zod}')
 
 const OUT = join(root, 'app', 'src-tauri', 'android-runtime')
 const CACHE = join(OUT, 'cache')
@@ -123,9 +123,13 @@ function npmInstallDsh(into) {
   // 整棵树重装:npm 看见已有的 node_modules 就不会再解析一遍,上次装下的版本(如被 overrides
   // 顶掉之前的 koffi)会原样留着
   rmSync(join(into, 'node_modules'), { recursive: true, force: true })
-  // koffi 自己没有 android 的原生件时会让会话锁失效,所以版本由本仓库钉,见 assertKoffi
+  // koffi 自己没有 android 的原生件时会让会话锁失效,所以版本由本仓库钉,见 assertKoffi。
+  // zod 也钉:0.2.1-rc.2 起有 50 个 @deepseek-ai 包把 zod 逐字钉成 4.4.3、另外 4 个写 ^4.4.3,
+  // npm 于是顶层装 ^ 解析出的新版、再给那 50 个各塞一份嵌套副本 —— 一份 4.4 MB,合计 217 MB,
+  // tar 从 190 MB 涨到 390 MB。顶到 4.4.3 三方都满足(openai 的可选 peer 是 ^3.25 || ^4.0),
+  // 树里只留一份,见 assertSingleZod
   writeFileSync(join(into, 'package.json'), JSON.stringify({
-    name: 'dsh-android-bundle', private: true, overrides: { koffi: pin.koffi },
+    name: 'dsh-android-bundle', private: true, overrides: { koffi: pin.koffi, zod: pin.zod },
   }, null, 2))
   log(`npm install @deepseek-ai/dsh@${pin.dsh}(os=android cpu=arm64,koffi 顶到 ${pin.koffi})`)
   const r = spawnSync(platform() === 'win32' ? 'npm.cmd' : 'npm', ['install', `@deepseek-ai/dsh@${pin.dsh}`,
@@ -146,6 +150,28 @@ function assertKoffi(nodeModules) {
   if (!existsSync(koffiNative(nodeModules))) {
     throw new Error(`koffi ${version} 没有 android-arm64 原生件:${koffiNative(nodeModules)} 不存在`)
   }
+}
+
+/**
+ * zod 的嵌套副本会把 tar 撑大一倍(50 份 × 4.4 MB),而这在构建期一声不响,只体现为 APK 变大。
+ * overrides 失效时这里拦住:树里只该有顶层那一份。
+ */
+function assertSingleZod(nodeModules) {
+  const copies = []
+  const scan = (dir) => {
+    for (const e of readdirSync(dir, { withFileTypes: true })) {
+      if (!e.isDirectory()) continue
+      if (e.name !== 'node_modules') { scan(join(dir, e.name)); continue }
+      const nested = join(dir, 'node_modules')
+      if (existsSync(join(nested, 'zod'))) copies.push(join(nested, 'zod'))
+      scan(nested)
+    }
+  }
+  if (existsSync(join(nodeModules, 'zod'))) copies.push(join(nodeModules, 'zod'))
+  scan(nodeModules)
+  if (copies.length !== 1) throw new Error(`树里有 ${copies.length} 份 zod,期望 1 份(overrides 没生效?)`)
+  const version = JSON.parse(readFileSync(join(nodeModules, 'zod', 'package.json'), 'utf8')).version
+  if (version !== pin.zod) throw new Error(`zod 实得 ${version},期望 ${pin.zod}`)
 }
 
 /** 去掉不会在 android-arm64 上用到的东西:别的平台的预编译、源码映射、类型声明 */
@@ -238,6 +264,7 @@ async function assemble() {
   const nm = join(bundle, 'node_modules')
   if (!existsSync(join(nm, '@deepseek-ai', 'dsh', 'lib', 'bin.js')) || !existsSync(koffiNative(nm))) npmInstallDsh(bundle)
   assertKoffi(nm)
+  assertSingleZod(nm)
 
   const stage = join(OUT, 'stage')
   rmSync(stage, { recursive: true, force: true })
@@ -266,6 +293,7 @@ async function assemble() {
   prune(join(stage, 'app', 'node_modules'))
   // 裁剪不该碰到它,但打进 tar 之前再确认一次:这一份没了手机上就发不出消息
   assertKoffi(join(stage, 'app', 'node_modules'))
+  assertSingleZod(join(stage, 'app', 'node_modules'))
   writeHomeSkeleton(join(stage, 'home'))
   const manifest = JSON.stringify({ node: pin.node, dsh: pin.dsh, app: pkg.version }, null, 2) + '\n'
   writeFileSync(join(stage, 'manifest.json'), manifest)

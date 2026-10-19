@@ -106,6 +106,8 @@ const preludeFor = (file) => PRELUDES[file.endsWith('.cjs') ? 'cjs' : 'esm']
 
 // 带参数的 link( / linkSync( 调用;unlink( symlink( 前面是字母,\b 不成立;注释里的 link() 没参数
 const LINK_CALL = /\b(?:link|linkSync)\(\s*[\w$]/
+const FS_MODULE = 'node:fs'
+const FS_MEMBER_CALL = /\bfs\.(?:link|linkSync)\(/
 
 /**
  * 树里每一个 node_modules 目录(含自己)。npm 的提升不是契约:上游发了 0.1.5-rc.3 之后,
@@ -170,6 +172,11 @@ export function patchHardLinks(nodeModules) {
   for (const lib of dshLibDirs(nodeModules)) walkJs(lib, (p) => {
     // 注入的 helper 里那一处 link 是本意,跳过前导段再扫
     const text = readFileSync(p, 'utf8')
+    // 文件得先碰过 node:fs,不然它根本没有硬链接可调。lib 下面也有打包进来的浏览器侧
+    // 代码(0.2.1-rc.2 新增的 experimental-inspector 带了一份 devtools 前端),里面的
+    // `link(e)` 是 markdown 渲染器的方法名,撞 LINK_CALL 但与 fs 无关。经注入的 fs
+    // (internals.fs.link)不靠 import,所以那种写法单列,不受这条限制。
+    if (!text.includes(FS_MODULE) && !FS_MEMBER_CALL.test(text)) return
     const own = Object.values(PRELUDES).find((v) => text.startsWith(v))
     const skip = own ? own.split('\n').length - 1 : 0
     text.split('\n').slice(skip).forEach((line, i) => {

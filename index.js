@@ -403,8 +403,7 @@ function apply(ctx, config = {}) {
  * 只用语义选择器(role/aria),不碰 dsh 的 CSS Module 类名——那些名字带内容
  * 哈希,dsh 一改样式就会变,针对它们写规则必碎。
  */
-function injectNarrowScreenCss(html) {
-  const css = `
+const tetherCss = `
 /* 侧栏底部的 sidebar.footer.action 是横排 flex 行,官方设想里放并排的小动作。
    「连接手机」照抄「设置」的类,是占满一行的触发行;别的插件(dsh-cost-meter)
    又往同一行放 width:100% 的面板,横排下两者互挤:本按钮被压到只剩图标,
@@ -530,9 +529,10 @@ function injectNarrowScreenCss(html) {
     z-index: 2;
   }
 }`
-  // 抽屉遮罩只是画上去的,点它不会收起——那需要脚本。这段只做这一件事:
-  // 窄屏下点到抽屉外面就替用户按一次侧栏开关。
-  const script = `
+
+// 抽屉遮罩只是画上去的,点它不会收起——那需要脚本。这段只做这一件事:
+// 窄屏下点到抽屉外面就替用户按一次侧栏开关。
+const tetherScript = `
 (function () {
   var narrow = window.matchMedia('(max-width: 640px)')
   // 这一部分长在 dsh 界面里,语言就该跟 dsh 的设置走;它把当前语言写在 <html lang> 上
@@ -777,9 +777,12 @@ function injectNarrowScreenCss(html) {
       .catch(function (e) { viewer(tx('配置文件', 'Config file'), '', String(e && e.message ? e.message : e)) })
   }, true)
 })()`
+
+/** 把那两份注入以字符串变换塞进 index.html */
+function injectNarrowScreenCss(html) {
   return html.replace(
     '</head>',
-    `<style data-dsh-tether="narrow-screen">${css}\n</style><script data-dsh-tether="narrow-screen">${script}\n</script></head>`,
+    `<style data-dsh-tether="narrow-screen">${tetherCss}\n</style><script data-dsh-tether="narrow-screen">${tetherScript}\n</script></head>`,
   )
 }
 

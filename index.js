@@ -748,37 +748,90 @@ const tetherScript = `
       .catch(function (e) { viewer(tx('配对', 'Pairing'), '', String(e && e.message ? e.message : e)) })
   }
 
+  // 可抄样式的参照行。浏览器侧是「设置」:triggerRow(定高的横排容器)套 trigger
+  // (flex:1 1 0%)两层,只抄里层放进纵向堆叠的插槽,basis 0% 会变成高度、按钮塌成
+  // 一行字,所以两层都抄。dsh desktop 的设置入口在原生壳里(⌘,),侧栏里没有
+  // settings.trigger,但 footer 底下那一行(登录后是账号行,没登录是「更多」)是同一
+  // 族的 triggerRow,改抄它。
+  function hostsReference() {
+    var settings = document.querySelector('[data-slot="settings.trigger"]')
+    var trigger = settings && settings.closest ? settings.closest('button') : null
+    if (trigger && trigger.parentElement) return { row: trigger.parentElement, trigger: trigger, browser: true }
+    var row = document.querySelector('[class*="settingsArea"] [class*="triggerRow"]')
+    var button = row && row.querySelector('button')
+    if (row && button) return { row: row, trigger: button, browser: false }
+    return null
+  }
+
+  // 同一行里 padding + 图标 + gap 决定文字从哪开始,所以图标与参照行一样宽,两行的
+  // 图标列和文字列才对齐。桌面端那一行会随登录状态换形态(没登录是 14px 字形,登录
+  // 后是 24px 头像),宽度因此是量参照行量出来的,不写死;量不到就退回 16。
+  function referenceIconWidth(trigger) {
+    var art = trigger.querySelector('svg, img')
+    var width = art ? Math.round(art.getBoundingClientRect().width) : 0
+    return width >= 12 && width <= 24 ? width : 16
+  }
+
+  // dsh 自己那套小图标的画法:16 视图框、1.3px 描边,字形落在 1.5~14.5 的方框里
+  function phoneIcon(size) {
+    return '<svg width="' + size + '" height="' + size + '" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true">'
+      + '<rect x="5.15" y="2.15" width="5.7" height="11.7" rx="1.6"/><path d="M7.1 11.6h1.8" stroke-linecap="round"/></svg>'
+  }
+
   function mountHostsTrigger() {
     var slot = document.querySelector('[data-slot="sidebar.footer.action"]')
     if (!slot || slot.querySelector('[data-dsh-tether="hosts-trigger"]')) return
-    var settings = document.querySelector('[data-slot="settings.trigger"]')
-    var reference = settings && settings.closest ? settings.closest('button') : null
-    if (!reference || !reference.parentElement) return
-    // 「设置」是 triggerRow(定高的横排容器)套 trigger(flex:1 1 0%)两层。只抄
-    // 里层放进纵向堆叠的插槽,basis 0% 会变成高度,按钮塌成一行字;两层都抄,
-    // 几何才在宽态 / rail 态都与「设置」一致。
+    var reference = hostsReference()
     var row = document.createElement('div')
     row.setAttribute('data-dsh-tether', 'hosts-row')
-    row.className = reference.parentElement.className
     var button = document.createElement('button')
     button.type = 'button'
     button.setAttribute('data-dsh-tether', 'hosts-trigger')
     var label = framed ? tx('我的电脑', 'My computers') : tx('连接手机', 'Connect a phone')
     button.setAttribute('aria-label', label)
-    // 类名带内容哈希,照抄隔壁「设置」按钮当前的,外观自然一致
-    button.className = reference.className
-    button.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/></svg><span data-dsh-tether="hosts-label">' + label + '</span>'
+    // 浏览器侧沿用原来那个 18px 图标,一字不改;抄不到「设置」时按参照行的尺寸画
+    var icon = reference === null || reference.browser
+      ? '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/></svg>'
+      : phoneIcon(referenceIconWidth(reference.trigger))
+    button.innerHTML = icon + '<span data-dsh-tether="hosts-label">' + label + '</span>'
     button.addEventListener('click', function () {
       if (framed) window.parent.postMessage({ type: 'dsh-tether:open-hosts' }, '*')
       else showPairing()
     })
     row.append(button)
     slot.append(row)
-    // 侧栏展开/收起时「设置」两层都会换类名(rail 与否),跟着同步
-    new MutationObserver(function () {
-      button.className = reference.className
-      row.className = reference.parentElement.className
-    }).observe(reference.parentElement, { attributes: true, attributeFilter: ['class'], subtree: true })
+    if (reference === null) {
+      ensureFallbackStyle()
+    } else {
+      var labelSpan = button.querySelector('[data-dsh-tether="hosts-label"]')
+      var referenceLabel = reference.trigger.querySelector('span')
+      // 类名带内容哈希,照抄参照行当前的,外观自然跟随 dsh 自己的构建。侧栏收起/
+      // 展开、登录状态变化时它会换类名,也会换图标尺寸,跟着同步
+      var sync = function () {
+        row.className = reference.row.className
+        button.className = reference.trigger.className
+        if (reference.browser) return
+        if (referenceLabel) labelSpan.className = referenceLabel.className
+        // 账号行的形态写在自己的 data-* 上(没登录 32px 矮一截,收起时 36×36 居中),
+        // 光抄类名只拿到组件的默认形态,会比隔壁高一截。属性名按前缀抄,不写死是哪几个
+        for (var i = button.attributes.length - 1; i >= 0; i--) {
+          var own = button.attributes[i].name
+          if (own.indexOf('data-') === 0 && own !== 'data-dsh-tether') button.removeAttribute(own)
+        }
+        for (var j = 0; j < reference.trigger.attributes.length; j++) {
+          var attr = reference.trigger.attributes[j]
+          if (attr.name.indexOf('data-') === 0 && attr.name !== 'data-dsh-tether') button.setAttribute(attr.name, attr.value)
+        }
+        var svg = button.querySelector('svg')
+        var width = referenceIconWidth(reference.trigger)
+        if (svg) { svg.setAttribute('width', width); svg.setAttribute('height', width) }
+      }
+      sync()
+      // 浏览器侧只有类名会变,照旧只盯 class;桌面端那一行换形态是改 data-*,得全盯
+      new MutationObserver(sync).observe(reference.row, reference.browser
+        ? { attributes: true, attributeFilter: ['class'], subtree: true }
+        : { attributes: true, subtree: true })
+    }
     // dsh 的语言能在设置里当场切,这个标签跟着换
     new MutationObserver(function () {
       var next = framed ? tx('我的电脑', 'My computers') : tx('连接手机', 'Connect a phone')
@@ -787,6 +840,33 @@ const tetherScript = `
       if (span) span.textContent = next
     }).observe(document.documentElement, { attributes: true, attributeFilter: ['lang'] })
   }
+  // 两处参照都抄不到时的兜底。只保证这一行能看、能点:宽度铺满插槽、行高与 dsh 的
+  // panelRow 一致,颜色圆角焦点环全取 --dsw-* 变量,不碰任何带内容哈希的类名,也不
+  // 去猜隔壁此刻长什么样。抄不到就不挂按钮的话,桌面端等于没有配对入口。
+  var fallbackStyleInstalled = false
+  function ensureFallbackStyle() {
+    if (fallbackStyleInstalled) return
+    fallbackStyleInstalled = true
+    var style = document.createElement('style')
+    style.setAttribute('data-dsh-tether', 'fallback-style')
+    style.textContent = [
+      '[data-dsh-tether="hosts-row"] { box-sizing: border-box; flex: none; display: flex; align-items: center; width: 100%; }',
+      '[data-dsh-tether="hosts-row"] > [data-dsh-tether="hosts-trigger"] {',
+      '  -webkit-appearance: none; appearance: none; box-sizing: border-box;',
+      '  flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 8px;',
+      '  height: 36px; margin: 0; padding: 6px; border: none;',
+      '  border-radius: var(--dsw-radius-md); background: transparent;',
+      '  color: var(--dsw-alias-label-primary); font: inherit; font-size: 14px; line-height: 22px;',
+      '  text-align: left; cursor: pointer; overflow: hidden;',
+      '}',
+      '[data-dsh-tether="hosts-row"] > [data-dsh-tether="hosts-trigger"]:hover { background: var(--dsw-alias-interactive-bg-hover); }',
+      '[data-dsh-tether="hosts-row"] [data-dsh-tether="hosts-label"] { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }',
+      '[data-sidebar-collapsed] [data-dsh-tether="hosts-row"] > [data-dsh-tether="hosts-trigger"] { justify-content: center; gap: 0; padding: 0; }',
+      '[data-sidebar-collapsed] [data-dsh-tether="hosts-label"] { display: none; }',
+    ].join(' ')
+    document.head.append(style)
+  }
+
   mountHostsTrigger()
   new MutationObserver(mountHostsTrigger).observe(document.documentElement, { childList: true, subtree: true })
 

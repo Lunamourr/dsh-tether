@@ -46,9 +46,15 @@ function ${HELPER}() {
 
 const REQUIRE_ADDON = /["']node-addon-require-builtin["']/
 
-// 这个原生件在 Android 上一定拿不到,所以引用它的地方必须都带回退。下面这处上游自带回退,
-// 处数写死:新增一处就让构建失败,好让人去判断它有没有回退。
-const ALLOWED = { '@deepseek-ai/cordis-plugin-loader/lib/index.js': 1 }
+// 这个原生件在 Android 上一定拿不到,所以引用它的地方必须都带回退。下面这些上游自带回退:
+// 两处都是先看 execArgv 里有没有 --expose-internals 直接 require("internal/..."),拿不到才
+// 退到原生件,而且退这一步还包在 try/catch 里。处数写死:新增一处就让构建失败,好让人去
+// 判断它有没有回退。
+const ALLOWED = {
+  '@deepseek-ai/cordis-plugin-loader/lib/index.js': 1,
+  // 0.2.1-rc.2 新增的热重载包,requireInternal 与上面那处同款写法
+  '@deepseek-ai/dsh-hmr/lib/index.js': 1,
+}
 
 /** 打补丁并确认 @deepseek-ai 各包 lib 里没有不带回退的 node-addon-require-builtin 引用 */
 export function patchRequireBuiltin(nodeModules) {

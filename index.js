@@ -826,6 +826,8 @@ const tetherScript = `
         if (reference.browser) return
         // 参照行换形态时文字 span 会换一个节点(登录后前面多出头像),每次重挑
         var referenceLabel = referenceLabelOf(reference.trigger)
+        // 侧栏收成竖条时参照行干脆不渲染文字,我们的文字也跟着收掉
+        labelSpan.style.display = referenceLabel ? '' : 'none'
         if (referenceLabel) labelSpan.className = referenceLabel.className
         // 账号行的形态写在自己的 data-* 上(没登录 32px 矮一截,收起时 36×36 居中),
         // 光抄类名只拿到组件的默认形态,会比隔壁高一截。属性名按前缀抄,不写死是哪几个

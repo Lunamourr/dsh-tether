@@ -772,6 +772,20 @@ const tetherScript = `
     return width >= 12 && width <= 24 ? width : 16
   }
 
+  // 参照行里装文字的那个 span。登录后账号行是「头像 span + 文字 span」两个,头像那个
+  // 24×24、圆、带 skeleton 底色,抄到它中文就竖成一字一行;头像恒在文字前面,所以取
+  // 末位。判据是「里面没有元素、不带 data-avatar-status」,不认类名 —— 类名带内容哈希。
+  // 侧栏收起时那一行只有图标、没有文字 span,返回 null。
+  function referenceLabelOf(trigger) {
+    var spans = trigger.querySelectorAll('span')
+    var picked = null
+    for (var i = 0; i < spans.length; i++) {
+      var span = spans[i]
+      if (span.children.length === 0 && !span.hasAttribute('data-avatar-status')) picked = span
+    }
+    return picked
+  }
+
   // dsh 自己那套小图标的画法:16 视图框、1.3px 描边,字形落在 1.5~14.5 的方框里
   function phoneIcon(size) {
     return '<svg width="' + size + '" height="' + size + '" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true">'
@@ -804,13 +818,14 @@ const tetherScript = `
       ensureFallbackStyle()
     } else {
       var labelSpan = button.querySelector('[data-dsh-tether="hosts-label"]')
-      var referenceLabel = reference.trigger.querySelector('span')
       // 类名带内容哈希,照抄参照行当前的,外观自然跟随 dsh 自己的构建。侧栏收起/
       // 展开、登录状态变化时它会换类名,也会换图标尺寸,跟着同步
       var sync = function () {
         row.className = reference.row.className
         button.className = reference.trigger.className
         if (reference.browser) return
+        // 参照行换形态时文字 span 会换一个节点(登录后前面多出头像),每次重挑
+        var referenceLabel = referenceLabelOf(reference.trigger)
         if (referenceLabel) labelSpan.className = referenceLabel.className
         // 账号行的形态写在自己的 data-* 上(没登录 32px 矮一截,收起时 36×36 居中),
         // 光抄类名只拿到组件的默认形态,会比隔壁高一截。属性名按前缀抄,不写死是哪几个

@@ -2,6 +2,19 @@
 
 本文件记录面向用户的变化。每个版本的这一节会原样作为该版本 Release 的说明。
 
+## 0.1.23
+
+### 修复
+
+- **登录账号后,侧栏里「连接手机」四个字竖成一列、后面顶着一个灰圆**([#17](https://github.com/zexadev/dsh-tether/issues/17))。0.1.22 起这个按钮改抄侧栏底部那一行的样式,抄文字样式时取的是那一行里的第一个文字块:没登录时它正好是文字,登录之后那一行最前面多了头像,抄来的就成了头像的样式 —— 一个 24 像素宽的圆形色块,四个汉字塞进去只能一字一行。现在改抄那一行里最末尾的纯文字块,并且那一行每次换形态(登录、退出、侧栏收放)都重新挑一次。dsh 0.2.1-rc 的浏览器界面登录后同样会这样,一并修了。按钮本身一直能点,配对不受影响。
+- **侧栏收成竖条时,「连接手机」的文字还挤在图标旁边**。dsh 自己那一行在竖条态只画图标、不画文字,我们没跟着收。现在参照的那一行不显示文字时,按钮也只留图标;按钮的无障碍名称一直都在,读屏不受影响。
+
+### English
+
+Signed in, the Connect a phone label in the sidebar stacked one character per line with a grey circle behind it ([#17](https://github.com/zexadev/dsh-tether/issues/17)). Since 0.1.22 the button copies the styling of the row at the bottom of the sidebar, and it picked the first text block in that row to copy from. Signed out that block is the label; signed in the row gains an avatar in front, so the button copied the avatar's styling instead — a round 24-pixel swatch, which a four-character label can only enter one character at a time. The button now copies the last plain-text block in that row, and picks it again every time the row changes shape (signing in or out, collapsing or expanding the sidebar). The browser interface of dsh 0.2.1-rc did the same thing once signed in, and is fixed as well. The button itself always worked, and pairing was never affected.
+
+With the sidebar collapsed to a strip, the Connect a phone label was still crammed next to the icon. The dsh row above it draws only its icon in that state, and the button did not follow. The button now drops its label whenever the row it copies has none; its accessible name stays in place, so screen readers are unaffected.
+
 ## 0.1.22
 
 ### 修复

@@ -10,6 +10,7 @@
     "withGlobalTauri": true,
     "windows": [
       {
+        "create": false,
         "title": "DSH Tether",
         "width": 420,
         "height": 780

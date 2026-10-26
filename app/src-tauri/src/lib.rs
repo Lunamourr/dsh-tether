@@ -456,6 +456,14 @@ pub fn run() {
             local_stop,
             local_log
         ])
+        .setup(|app| {
+            // 窗口改在这里建(配置里 create: false):启动脚本只能在建窗口时挂,
+            // 而 dsh 页面活在 iframe 里,只挂主 frame 够不着它。窗口属性仍在 tauri.conf.json。
+            tauri::WebviewWindowBuilder::from_config(app.handle(), &app.config().app.windows[0])?
+                .initialization_script_for_all_frames(include_str!("../webview-compat.js"))
+                .build()?;
+            Ok(())
+        })
         .run(tauri::generate_context!())
         .expect("tauri failed to start");
 }

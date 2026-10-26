@@ -121,13 +121,12 @@ async fn get_or_init_endpoint(app: &AppHandle, state: &AppState) -> Result<Endpo
 /// 连接 actor:发首行(Pair 或 Hello),配对成功即持久化 host,
 /// 之后读侧转事件给前端、写侧从 mpsc 取决定,断开清理并广播状态。
 async fn run_connection(app: AppHandle, peer: EndpointId, first: Wire, pair_label: Option<String>) {
-    if let Err(e) = run_connection_inner(&app, peer, first, pair_label).await {
-        emit_state(&app, "disconnected", format!("{e:#}"));
-    } else {
-        emit_state(&app, "disconnected", t("连接已断开", "Connection closed"));
+    match run_connection_inner(&app, peer, first, pair_label).await {
+        Err(e) => emit_state(&app, "disconnected", format!("{e:#}")),
+        Ok(true) => emit_state(&app, "disconnected", t("连接已断开", "Connection closed")),
+        // 旧连接在收尾,当前那条还活着 —— 不能替它报断开
+        Ok(false) => {}
     }
-    let state = app.state::<AppState>();
-    *state.outgoing.lock().await = None;
 }
 
 async fn run_connection_inner(
@@ -135,7 +134,7 @@ async fn run_connection_inner(
     peer: EndpointId,
     first: Wire,
     pair_label: Option<String>,
-) -> Result<()> {
+) -> Result<bool> {
     emit_state(app, "connecting", t("正在连接主机…", "Connecting to the computer…"));
     let state = app.state::<AppState>();
     let ep = get_or_init_endpoint(app, &state).await?;
@@ -169,7 +168,7 @@ async fn run_connection_inner(
     }
 
     let (tx, mut rx) = mpsc::channel::<Wire>(16);
-    *state.outgoing.lock().await = Some(tx);
+    *state.outgoing.lock().await = Some(tx.clone());
 
     // 本地代理:每条入站 TCP 对应一条 iroh 代理流,WebView 由此拿到主机的完整
     // dsh web UI。端口按主机派生,同一台主机每次都是同一个源(见 proxy_port_for)。
@@ -213,7 +212,14 @@ async fn run_connection_inner(
         _ = writer => {}
         _ = reader => {}
     }
-    Ok(())
+    // 收尾时自己还是不是「当前那条」。旧连接晚一步收尾会把新连接刚装上的发送端
+    // 一起清掉,新连接从此发不出审批决定,界面还会在刚连上后立刻跳回「未连接」。
+    let mut current = state.outgoing.lock().await;
+    let was_current = current.as_ref().is_some_and(|cur| cur.same_channel(&tx));
+    if was_current {
+        *current = None;
+    }
+    Ok(was_current)
 }
 
 /// 本地代理端口按主机 ID 派生:dsh 的 web UI 把「当前会话」等状态按源存在

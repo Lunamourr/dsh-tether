@@ -207,7 +207,12 @@ async fn run_connection_inner(
             }
         }
     };
-    tokio::join!(writer, reader);
+    // 任何一侧结束就算这条连接完了。写侧平时一直阻塞在 rx.recv() 上,链路死掉只有
+    // 读侧会报错;等两侧都结束就等于永远不结束,前端于是一直停在「已连接」。
+    tokio::select! {
+        _ = writer => {}
+        _ = reader => {}
+    }
     Ok(())
 }
 

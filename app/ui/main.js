@@ -317,14 +317,36 @@ window.addEventListener('message', (e) => {
 
 // 回前台即重连:Android 会在后台掐掉网络,回来时旧连接多半已死。
 // 本地模式则看 node 进程还在不在,被系统杀了就重起(会话已落盘,不丢)。
-document.addEventListener('visibilitychange', () => {
+document.addEventListener('visibilitychange', async () => {
   if (document.visibilityState !== 'visible') return
   if (!views.pair.classList.contains('hidden') || !views.hosts.classList.contains('hidden')) return
   if (mode === 'local') {
     invoke('local_status').then((st) => { if (!st.running) startLocal() }).catch(() => {})
     return
   }
-  if (!live && book.hosts.length > 0) startConnect(null)
+  if (book.hosts.length === 0) return
+
+  // live 为 true 不代表链路还活着:NAT 映射过期后连接会半开,而协议没有心跳,
+  // Rust 侧的 disconnected 永远不会触发,于是这里原本的 `if (!live)` 直接跳过,
+  // 页面就永远停在「重新连接中」。所以回前台时主动探一次本地代理。
+  if (live) {
+    const src = el('webui').getAttribute('src')
+    let reachable = false
+    if (src) {
+      const ctrl = new AbortController()
+      const timer = setTimeout(() => ctrl.abort(), 2000)
+      try {
+        // no-cors:只要代理还能回任何 HTTP 响应就算活着,404 也算;读不到内容无所谓
+        await fetch(src + '__tether_probe__', { mode: 'no-cors', cache: 'no-store', signal: ctrl.signal })
+        reachable = true
+      } catch {}
+      clearTimeout(timer)
+    }
+    if (reachable) return
+    live = false
+    el('webui').removeAttribute('src')
+  }
+  startConnect(null)
 })
 
 // —— 本地模式 ——

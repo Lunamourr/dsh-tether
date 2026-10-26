@@ -235,7 +235,7 @@ fn proxy_port_for(peer: &EndpointId) -> u16 {
 
 /// 起本地 TCP 监听,每条连接开一条 iroh 代理流转发;返回实际端口。
 /// 派生端口被占时退回 OS 分配:这一次不记状态,连接本身不受影响。
-/// 监听任务随连接生命周期结束:连接断开后 open_bi 失败,浏览器侧表现为加载失败。
+/// 连接一断监听就关,端口随即让出来给下次重连用(见循环里的注释)。
 async fn start_proxy(app: AppHandle, conn: iroh::endpoint::Connection) -> Result<u16> {
     let preferred = proxy_port_for(&conn.remote_id());
     let listener = match tokio::net::TcpListener::bind(("127.0.0.1", preferred)).await {
@@ -248,7 +248,14 @@ async fn start_proxy(app: AppHandle, conn: iroh::endpoint::Connection) -> Result
     tauri::async_runtime::spawn(async move {
         let _keep_app_alive = app;
         loop {
-            let Ok((mut tcp, _)) = listener.accept().await else { break };
+            let accepted = tokio::select! {
+                accepted = listener.accept() => accepted,
+                // 连接断了监听口不关,就会一直占着按主机派生的那个端口,下次重连
+                // 只能退回 OS 随机端口 —— 对 dsh 来说是换了个源,按源存的状态全空。
+                // 而且这个废监听照样 accept,页面看着「连上了」其实每个请求都被丢掉。
+                _ = conn.closed() => break,
+            };
+            let Ok((mut tcp, _)) = accepted else { break };
             let conn = conn.clone();
             tauri::async_runtime::spawn(async move {
                 let Ok((mut send, recv)) = conn.open_bi().await else { return };

@@ -27,6 +27,10 @@ struct AppState {
     outgoing: Mutex<Option<mpsc::Sender<Wire>>>,
     /// 本地代理监听端口;WebView 指向它即拿到主机的完整 dsh web UI
     proxy_port: Mutex<Option<u16>>,
+    /// 当前这条 iroh 连接;换连接时要主动关掉它
+    conn: Mutex<Option<iroh::endpoint::Connection>>,
+    /// 当前这条连接的代理监听任务;换连接时要先停掉它,端口才让得出来
+    proxy_task: Mutex<Option<tauri::async_runtime::JoinHandle<()>>>,
     /// 本地模式:手机上跑着的 dsh(仅 Android arm64 构建有)
     #[cfg(target_os = "android")]
     local: Mutex<Option<local::LocalHost>>,
@@ -168,12 +172,28 @@ async fn run_connection_inner(
     }
 
     let (tx, mut rx) = mpsc::channel::<Wire>(16);
+    // 先换发送端再拆旧连接:反过来的话旧连接收尾时会认出自己还是「当前那条」,
+    // 于是清掉发送端并广播断开,新连接刚连上就被判死
     *state.outgoing.lock().await = Some(tx.clone());
+
+    // 旧连接不会自己走:iroh 有 keep-alive,没人关它就一直活着,它的监听口也就
+    // 一直占着按主机派生的那个端口,新连接只能退回 OS 随机端口 —— 对 dsh 来说
+    // 是换了个源,按源存的状态全空。关连接只让监听任务「将要」退出,abort 后
+    // 等它 join 完才能确定 TcpListener 真的 drop 了,否则下面照样绑不上。
+    if let Some(old) = state.conn.lock().await.take() {
+        old.close(0u32.into(), b"replaced");
+    }
+    if let Some(task) = state.proxy_task.lock().await.take() {
+        task.abort();
+        let _ = task.await;
+    }
+    *state.conn.lock().await = Some(conn.clone());
 
     // 本地代理:每条入站 TCP 对应一条 iroh 代理流,WebView 由此拿到主机的完整
     // dsh web UI。端口按主机派生,同一台主机每次都是同一个源(见 proxy_port_for)。
     match start_proxy(app.clone(), conn.clone()).await {
-        Ok(port) => {
+        Ok((port, task)) => {
+            *state.proxy_task.lock().await = Some(task);
             *state.proxy_port.lock().await = Some(port);
             let _ = app.emit("remote:proxy-ready", serde_json::json!({ "url": format!("http://127.0.0.1:{port}/") }));
         }
@@ -218,6 +238,9 @@ async fn run_connection_inner(
     let was_current = current.as_ref().is_some_and(|cur| cur.same_channel(&tx));
     if was_current {
         *current = None;
+        drop(current);
+        state.conn.lock().await.take();
+        state.proxy_task.lock().await.take();
     }
     Ok(was_current)
 }
@@ -233,10 +256,14 @@ fn proxy_port_for(peer: &EndpointId) -> u16 {
     20000 + u16::from_be_bytes([b[0], b[1]]) % 12000
 }
 
-/// 起本地 TCP 监听,每条连接开一条 iroh 代理流转发;返回实际端口。
+/// 起本地 TCP 监听,每条连接开一条 iroh 代理流转发;返回实际端口和监听任务。
 /// 派生端口被占时退回 OS 分配:这一次不记状态,连接本身不受影响。
-/// 连接一断监听就关,端口随即让出来给下次重连用(见循环里的注释)。
-async fn start_proxy(app: AppHandle, conn: iroh::endpoint::Connection) -> Result<u16> {
+/// 连接一断监听就关,端口随即让出来给下次重连用(见循环里的注释);换连接时由
+/// 调用方 abort 这个任务,那条路不等连接关闭。
+async fn start_proxy(
+    app: AppHandle,
+    conn: iroh::endpoint::Connection,
+) -> Result<(u16, tauri::async_runtime::JoinHandle<()>)> {
     let preferred = proxy_port_for(&conn.remote_id());
     let listener = match tokio::net::TcpListener::bind(("127.0.0.1", preferred)).await {
         Ok(listener) => listener,
@@ -245,7 +272,7 @@ async fn start_proxy(app: AppHandle, conn: iroh::endpoint::Connection) -> Result
             .context(t("本地代理监听失败", "the local proxy could not listen"))?,
     };
     let port = listener.local_addr()?.port();
-    tauri::async_runtime::spawn(async move {
+    let task = tauri::async_runtime::spawn(async move {
         let _keep_app_alive = app;
         loop {
             let accepted = tokio::select! {
@@ -268,7 +295,7 @@ async fn start_proxy(app: AppHandle, conn: iroh::endpoint::Connection) -> Result
             });
         }
     });
-    Ok(port)
+    Ok((port, task))
 }
 
 fn parse_peer(peer: &str) -> Result<EndpointId, String> {

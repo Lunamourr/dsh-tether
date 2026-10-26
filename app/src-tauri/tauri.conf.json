@@ -11,8 +11,10 @@
     "windows": [
       {
         "title": "DSH Tether",
-        "width": 420,
-        "height": 780
+        "width": 1200,
+        "height": 820,
+        "minWidth": 900,
+        "minHeight": 600
       }
     ],
     "security": {
@@ -21,9 +23,7 @@
   },
   "bundle": {
     "iOS": {
-      "frameworks": [
-        "SystemConfiguration"
-      ]
+      "frameworks": ["SystemConfiguration"]
     }
   }
 }

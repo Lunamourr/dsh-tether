@@ -24,7 +24,7 @@ jobs:
           targets: aarch64-apple-darwin,x86_64-apple-darwin
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: app/src-tauri -> target
+          workspaces: . -> target
       - run: pnpm install
         working-directory: app
       - name: Build universal app
@@ -33,11 +33,11 @@ jobs:
       - name: Locate bundles
         run: |
           echo "== bundles =="
-          find app/src-tauri/target -maxdepth 6 \( -name '*.app' -o -name '*.dmg' \) -print
+          find target -maxdepth 6 \( -name '*.app' -o -name '*.dmg' \) -print || true
       - uses: actions/upload-artifact@v7
         with:
           name: dsh-tether-macos
           path: |
-            app/src-tauri/target/**/*.dmg
-            app/src-tauri/target/**/*.app
+            target/universal-apple-darwin/release/bundle/dmg/*.dmg
+            target/universal-apple-darwin/release/bundle/macos/*.app
           if-no-files-found: error

@@ -12,8 +12,10 @@
       {
         "create": false,
         "title": "DSH Tether",
-        "width": 420,
-        "height": 780
+        "width": 1200,
+        "height": 820,
+        "minWidth": 900,
+        "minHeight": 600
       }
     ],
     "security": {
@@ -21,10 +23,15 @@
     }
   },
   "bundle": {
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
     "iOS": {
-      "frameworks": [
-        "SystemConfiguration"
-      ]
+      "frameworks": ["SystemConfiguration"]
     }
   }
 }

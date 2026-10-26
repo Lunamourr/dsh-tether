@@ -1,0 +1,43 @@
+name: build-macos-app
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Branch or tag to build
+        required: true
+        default: macos-client
+
+jobs:
+  dmg:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: actions/setup-node@v5
+        with: { node-version: '22' }
+      - uses: pnpm/action-setup@v6
+        with: { version: 10 }
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: . -> target
+      - run: pnpm install
+        working-directory: app
+      - name: Build universal app
+        working-directory: app
+        run: pnpm exec tauri build --target universal-apple-darwin --bundles app,dmg
+      - name: Locate bundles
+        run: |
+          echo "== bundles =="
+          find target -maxdepth 6 \( -name '*.app' -o -name '*.dmg' \) -print || true
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dsh-tether-macos
+          path: |
+            target/universal-apple-darwin/release/bundle/dmg/*.dmg
+            target/universal-apple-darwin/release/bundle/macos/*.app
+          if-no-files-found: error

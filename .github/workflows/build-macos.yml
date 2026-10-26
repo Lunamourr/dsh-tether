@@ -29,11 +29,15 @@ jobs:
         working-directory: app
       - name: Build universal app
         working-directory: app
-        run: pnpm exec tauri build --target universal-apple-darwin
+        run: pnpm exec tauri build --target universal-apple-darwin --bundles app,dmg
+      - name: Locate bundles
+        run: |
+          echo "== bundles =="
+          find app/src-tauri/target -maxdepth 6 \( -name '*.app' -o -name '*.dmg' \) -print
       - uses: actions/upload-artifact@v7
         with:
           name: dsh-tether-macos
           path: |
-            app/src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
-            app/src-tauri/target/universal-apple-darwin/release/bundle/macos/*.app
+            app/src-tauri/target/**/*.dmg
+            app/src-tauri/target/**/*.app
           if-no-files-found: error

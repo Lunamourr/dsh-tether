@@ -5,26 +5,34 @@
 ## 下载
 
 - Release：[v0.1.23-macos.1](https://github.com/Lunamourr/dsh-tether/releases/tag/v0.1.23-macos.1)
-- 直接下载：[DSH Tether_0.1.23_universal.dmg](https://github.com/Lunamourr/dsh-tether/blob/macos-dist/DSH%20Tether_0.1.23_universal.dmg)（17.7 MB，universal：arm64 + x86_64）
+- 直接下载：[DSH Tether_0.1.23_universal.dmg](https://github.com/Lunamourr/dsh-tether/blob/macos-dist/DSH%20Tether_0.1.23_universal.dmg)（17.5 MB，universal：arm64 + x86_64）
 
 ## 源码改动（feat/macos-client）
 
-- `app/src-tauri/tauri.conf.json`：窗口 420x780 → 1200x820，最小 900x600；`bundle.icon` 指向 `icons/*`
+- `app/src-tauri/tauri.conf.json`：窗口 420x780 → 1200x820，最小 900x600；新增 `bundle.icon` 引用仓库现有图标
 - `app/src-tauri/Info.plist`：新增 `NSAppTransportSecurity/NSAllowsLocalNetworking` 与 `NSLocalNetworkUsageDescription`，否则 WKWebView 加载 `http://127.0.0.1:<port>` 会白屏
-- `app-icon.png`（仓库根）：1024x1024 图标源图
 
-## 图标
+## 图标（复用手机端同一套）
 
-Tauri 只有在 `bundle.icon` 里配置了 `icon.icns` 时才会写入 `CFBundleIconFile` 和 `Resources/icon.icns`，否则 App 显示系统占位图标。
+仓库里本来就有整套图标，源图是 `app/src-tauri/app-icon.png`（黑色虎鲸），派生文件在 `app/src-tauri/icons/`：
 
-生成方式：
+- `icon.icns`（130,841 B）、`icon.ico`、32/64/128/128@2x PNG，以及 `android/`、`ios/` 各尺寸
+- 上游 `tauri.conf.json` 从没配置 `bundle.icon`，所以 macOS 端一直用系统占位图标
+- 修复方式只是在 `bundle.icon` 里列出这些文件，**不需要重新生成**：
 
-```bash
-cd app
-pnpm exec tauri icon ../app-icon.png -o src-tauri/icons
+```json
+"bundle": {
+  "icon": [
+    "icons/32x32.png",
+    "icons/128x128.png",
+    "icons/128x128@2x.png",
+    "icons/icon.icns",
+    "icons/icon.ico"
+  ]
+}
 ```
 
-CI 里已由 workflow 的 `Generate app icons` 步骤自动执行，本地构建前需要手动跑一次。
+构建产物里的 `Contents/Resources/icon.icns` 与仓库文件逐字节一致（git blob `471efff39189ac614263d69e7027adb3b12eb44d`），`Info.plist` 写入 `CFBundleIconFile = icon.icns`。
 
 ## 构建
 

@@ -455,9 +455,11 @@ const tetherCss = `
   /* 设置行是「说明文字 + 控件」一行排开,说明列 min-width:0,窄屏被控件挤到
      2px 宽,中文于是一字一行。让说明占满一行、控件换到下一行。
      选择器咬的是 CSS Module 的本地名(row/rowText),只有哈希前缀会随构建变;
-     dsh 若重命名,规则失效退回现状,不会更糟。 */
-  [class*="_row"]:not([class*="rowText"]) { flex-wrap: wrap !important; }
-  [class*="rowText"] { flex: 1 1 100% !important; }
+     dsh 若重命名,规则失效退回现状,不会更糟。
+     必须要求带 rowText 直接子元素:光凭名字里有 row 还会命中会话里的工具调用
+     行,那种行高度写死 24px 且 overflow:hidden,一换行标题就被切掉半截。 */
+  [class*="_row"]:has(> [class*="rowText"]) { flex-wrap: wrap !important; }
+  [class*="_row"] > [class*="rowText"] { flex: 1 1 100% !important; }
 
   /* 弹窗是「左导航 + 右内容」横向排列,导航固定 188px——在 412px 的手机上
      占掉 45%,内容只剩两百出头。改成导航横排在顶、内容占满整宽。
